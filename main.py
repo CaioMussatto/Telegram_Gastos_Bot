@@ -3,8 +3,14 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext, ConversationHandler, MessageHandler, Filters
+from telegram import ReplyKeyboardRemove
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    MessageHandler,
+    Filters,
+    ConversationHandler
+)
 from dotenv import load_dotenv
 
 # Configurações iniciais
