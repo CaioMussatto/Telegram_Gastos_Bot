@@ -8,6 +8,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext, ConversationH
 from dotenv import load_dotenv
 
 # Configurações iniciais
+
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 
@@ -134,7 +135,7 @@ def cancel(update: Update, context: CallbackContext):
 
 # ========== CONFIGURAÇÃO DO BOT ==========
 def main():
-    updater = Updater(TOKEN, use_context=True)
+    updater = Updater(TOKEN)
     dp = updater.dispatcher
 
     conv_handler = ConversationHandler(
