@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-SERVICE_NAME = "https://telegram-gastos-bot-l4cb.onrender.com"
+SERVICE_NAME = "https://telegram-gastos-bot-l4cb"
 AMOUNT, CATEGORY, PERSON, DATE = range(4)
 
 # Banco de Dados
