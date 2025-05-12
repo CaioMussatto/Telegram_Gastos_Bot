@@ -11,17 +11,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-# Estados da conversa
+SERVICE_NAME = "https://telegram-gastos-bot-l4cb.onrender.com"
 AMOUNT, CATEGORY, PERSON, DATE = range(4)
 
-# Criar banco de dados se não existir
-os.makedirs('database', exist_ok=True)
-
-conn = sqlite3.connect('database/expenses.db', check_same_thread=False)
+# Banco de Dados
+conn = sqlite3.connect('expenses.db', check_same_thread=False)
 c = conn.cursor()
-open('database/expenses.db', 'a').close()
-# Criar tabela
 c.execute('''CREATE TABLE IF NOT EXISTS expenses
              (id INTEGER PRIMARY KEY,
               amount REAL,
@@ -30,133 +25,134 @@ c.execute('''CREATE TABLE IF NOT EXISTS expenses
               date DATE)''')
 conn.commit()
 
-# ========== HANDLERS PRINCIPAIS ==========
+
+# ========== HANDLERS ==========
 def start(update: Update, context: CallbackContext):
     update.message.reply_text(
         "👋 Olá! Sou seu bot de controle de gastos.\n"
-        "Comandos disponíveis:\n"
-        "/add - Adicionar novo gasto\n"
-        "/close_month - Fechar o mês\n"
+        "Comandos:\n"
+        "/add - Adicionar gasto\n"
+        "/close_month - Fechar mês\n"
         "/help - Ajuda"
     )
 
 
 def add(update: Update, context: CallbackContext):
-    update.message.reply_text("💰 Por favor, digite o valor gasto:")
+    update.message.reply_text("💰 Digite o valor gasto:")
     return AMOUNT
 
 
 def process_amount(update: Update, context: CallbackContext):
     try:
-        amount = float(update.message.text)
-        context.user_data['amount'] = amount
-        update.message.reply_text("📂 Digite a categoria (ex: Alimentação, Transporte):")
+        context.user_data['amount'] = float(update.message.text)
+        update.message.reply_text("📂 Categoria (ex: Alimentação):")
         return CATEGORY
     except ValueError:
-        update.message.reply_text("❌ Valor inválido! Digite apenas números.")
+        update.message.reply_text("❌ Valor inválido! Use números.")
         return AMOUNT
 
 
 def process_category(update: Update, context: CallbackContext):
     context.user_data['category'] = update.message.text
-    update.message.reply_text("👤 Quem gastou? (Digite o nome):")
+    update.message.reply_text("👤 Quem gastou?")
     return PERSON
 
 
 def process_person(update: Update, context: CallbackContext):
     context.user_data['person'] = update.message.text
-    update.message.reply_text("📅 Data do gasto (Formato AAAA-MM-DD):")
+    update.message.reply_text("📅 Data (AAAA-MM-DD):")
     return DATE
 
 
 def process_date(update: Update, context: CallbackContext):
     try:
-        date_str = update.message.text
-        datetime.strptime(date_str, '%Y-%m-%d')  # Validar formato
+        date = datetime.strptime(update.message.text, "%Y-%m-%d").date()
 
-        # Salvar no banco de dados
-        c.execute("INSERT INTO expenses (amount, category, person, date) VALUES (?, ?, ?, ?)",
+        c.execute("INSERT INTO expenses (amount, category, person, date) VALUES (?,?,?,?)",
                   (context.user_data['amount'],
                    context.user_data['category'],
                    context.user_data['person'],
-                   date_str))
+                   date))
         conn.commit()
 
-        update.message.reply_text("✅ Gasto adicionado com sucesso!")
+        update.message.reply_text("✅ Gasto registrado!")
         return ConversationHandler.END
     except Exception as e:
-        update.message.reply_text(f"❌ Data inválida! Erro: {str(e)}")
+        update.message.reply_text(f"❌ Erro: {str(e)}")
         return DATE
 
 
 def close_month(update: Update, context: CallbackContext):
     try:
-        # Ler dados do banco
-        df = pd.read_sql_query("SELECT * FROM expenses", conn)
+        df = pd.read_sql("SELECT * FROM expenses", conn)
 
         if df.empty:
-            update.message.reply_text("📭 Nenhum gasto registrado este mês!")
+            update.message.reply_text("📭 Nenhum gasto este mês!")
             return
 
-        # Calcular totais
+        # Cálculos
         total = df['amount'].sum()
         per_person = total / 2
+        saldos = df.groupby('person')['amount'].sum() - per_person
 
-        # Calcular diferenças
-        people = df.groupby('person')['amount'].sum().reset_index()
-        people['diferença'] = people['amount'] - per_person
-
-        # Gerar gráfico de categorias
+        # Gráfico
         plt.figure(figsize=(10, 6))
         df.groupby(['category', 'person'])['amount'].sum().unstack().plot(kind='bar')
-        plt.title('Gastos por Categoria e Pessoa')
+        plt.title('Gastos por Categoria')
         plt.xticks(rotation=45)
         plt.tight_layout()
-        plt.savefig('charts/categories.png')
+        plt.savefig('chart.png')
 
-        # Criar relatório
-        report = f"📊 **Relatório Mensal**\n\n"
-        report += f"Total gasto: R${total:.2f}\n"
-        report += f"Valor por pessoa: R${per_person:.2f}\n\n"
-        report += "**Saldos:**\n" + "\n".join(
-            [f"{row['person']}: R${row['diferença']:.2f} ({'deve receber' if row['diferença'] < 0 else 'deve pagar'})"
-             for _, row in people.iterrows()]
+        # Relatório
+        report = (
+                f"📊 **Relatório Mensal**\n"
+                f"Total: R${total:.2f}\n"
+                f"Valor por pessoa: R${per_person:.2f}\n\n"
+                "**Saldos:**\n" +
+                "\n".join([f"{p}: R${v:.2f} ({'deve' if v > 0 else 'recebe'} R${abs(v):.2f})"
+                           for p, v in saldos.items()])
         )
 
-        # Enviar resultados
-        update.message.reply_photo(open('charts/categories.png', 'rb'))
+        # Enviar
+        update.message.reply_photo(open('chart.png', 'rb'))
         update.message.reply_text(report, parse_mode='Markdown')
 
     except Exception as e:
-        update.message.reply_text(f"⚠️ Erro ao gerar relatório: {str(e)}")
+        update.message.reply_text(f"⚠️ Erro: {str(e)}")
 
 
-def cancel(update: Update, context: CallbackContext):
-    update.message.reply_text("Operação cancelada.")
-    return ConversationHandler.END
-
-
-# ========== CONFIGURAÇÃO DO BOT ==========
+# ========== CONFIG SERVIDOR ==========
 def main():
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    updater = Updater(TOKEN, use_context=True)
 
+    # Configurar Webhook (OBRIGATÓRIO PARA RENDER)
+    PORT = int(os.environ.get('PORT', 10000))
+    webhook_url = f"https://{SERVICE_NAME}.onrender.com/{TOKEN}"
+
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=webhook_url
+    )
+
+    # Handlers
+    dp = updater.dispatcher
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('add', add)],
         states={
-            AMOUNT: [MessageHandler(Filters.text & ~Filters.command, process_amount)],
-            CATEGORY: [MessageHandler(Filters.text & ~Filters.command, process_category)],
-            PERSON: [MessageHandler(Filters.text & ~Filters.command, process_person)],
-            DATE: [MessageHandler(Filters.text & ~Filters.command, process_date)]
+            AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_amount)],
+            CATEGORY: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_category)],
+            PERSON: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_person)],
+            DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_date)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[]
     )
 
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("close_month", close_month))
     dp.add_handler(conv_handler)
 
-    updater.start_polling()
     updater.idle()
 
 
