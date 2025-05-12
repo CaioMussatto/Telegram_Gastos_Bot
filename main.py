@@ -39,6 +39,45 @@ def init_db():
 conn = init_db()
 
 
+def close_month(update, context):
+    try:
+        # Buscar dados do banco
+        df = pd.read_sql("SELECT * FROM expenses", conn)
+
+        if df.empty:
+            update.message.reply_text("📭 Nenhum gasto registrado este mês!")
+            return
+
+        # Cálculos
+        total = df['amount'].sum()
+        per_person = total / 2
+        saldos = df.groupby('person')['amount'].sum() - per_person
+
+        # Gráfico
+        plt.figure(figsize=(10, 6))
+        df.groupby(['category', 'person'])['amount'].sum().unstack().plot(kind='bar')
+        plt.title('Gastos por Categoria')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('chart.png')
+
+        # Relatório
+        report = (
+                f"📊 Relatório Mensal\n"
+                f"Total Gasto: R${total:.2f}\n"
+                f"Valor por Pessoa: R${per_person:.2f}\n\n"
+                "💵 Saldos:\n" +
+                "\n".join([f"{p}: R${v:.2f} ({'deve pagar' if v > 0 else 'deve receber'})"
+                           for p, v in saldos.items()])
+        )
+
+        # Enviar
+        update.message.reply_photo(photo=open('chart.png', 'rb'))
+        update.message.reply_text(report)
+
+    except Exception as e:
+        update.message.reply_text(f"⚠️ Erro ao gerar relatório: {str(e)}")
+
 # ========== NOVAS FUNÇÕES DE RETRY ==========
 def error_handler(update, context):
     """Lida com erros inesperados"""
@@ -202,7 +241,7 @@ def main():
     dp.add_handler(CommandHandler("start", start))
     dp.add_handler(CommandHandler("close_month", close_month))
     dp.add_handler(conv_handler)
-    dp.add_error_handler(error_handler)
+    #dp.add_error_handler(error_handler)
 
     # Configurar webhook
     updater.start_webhook(
