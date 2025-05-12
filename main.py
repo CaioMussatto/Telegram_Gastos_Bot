@@ -16,8 +16,13 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 AMOUNT, CATEGORY, PERSON, DATE = range(4)
 
 # Criar banco de dados se não existir
+os.makedirs('database', exist_ok=True)
+
 conn = sqlite3.connect('database/expenses.db', check_same_thread=False)
 c = conn.cursor()
+open('database/expenses.db', 'a').close()
+
+# Criar tabela
 c.execute('''CREATE TABLE IF NOT EXISTS expenses
              (id INTEGER PRIMARY KEY,
               amount REAL,
@@ -25,7 +30,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS expenses
               person TEXT,
               date DATE)''')
 conn.commit()
-
 
 # ========== HANDLERS PRINCIPAIS ==========
 def start(update: Update, context: CallbackContext):
