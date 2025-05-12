@@ -21,7 +21,6 @@ os.makedirs('database', exist_ok=True)
 conn = sqlite3.connect('database/expenses.db', check_same_thread=False)
 c = conn.cursor()
 open('database/expenses.db', 'a').close()
-
 # Criar tabela
 c.execute('''CREATE TABLE IF NOT EXISTS expenses
              (id INTEGER PRIMARY KEY,
