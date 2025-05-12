@@ -66,7 +66,7 @@ def process_person(update: Update, context: CallbackContext):
 
 def process_date(update: Update, context: CallbackContext):
     try:
-        date = datetime.strptime(update.message.text, "%Y-%m-%d").date()
+        date = datetime.strptime(update.message.text, "%d/%m/%y").date()
 
         c.execute("INSERT INTO expenses (amount, category, person, date) VALUES (?,?,?,?)",
                   (context.user_data['amount'],
