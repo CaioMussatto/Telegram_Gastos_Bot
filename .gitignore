@@ -1,3 +1,4 @@
 .env
 database/
 charts/
+.telegram_bot/
