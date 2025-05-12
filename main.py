@@ -141,10 +141,10 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('add', add)],
         states={
-            AMOUNT: [MessageHandler(Filters.text & ~Filters.COMMAND, process_amount)],
-            CATEGORY: [MessageHandler(Filters.text & ~Filters.COMMAND, process_category)],
-            PERSON: [MessageHandler(Filters.text & ~Filters.COMMAND, process_person)],
-            DATE: [MessageHandler(Filters.text & ~Filters.COMMAND, process_date)]
+            AMOUNT: [MessageHandler(Filters.text & ~Filters.command, process_amount)],
+            CATEGORY: [MessageHandler(Filters.text & ~Filters.command, process_category)],
+            PERSON: [MessageHandler(Filters.text & ~Filters.command, process_person)],
+            DATE: [MessageHandler(Filters.text & ~Filters.command, process_date)]
         },
         fallbacks=[]
     )
