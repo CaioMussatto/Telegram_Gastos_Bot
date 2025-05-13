@@ -44,19 +44,19 @@ MODE, AMOUNT, CATEGORY, PERSON, DATE, LIST = range(6)
 # --- Handlers de comandos ---
 def start(update, context):
     update.message.reply_text(
-        "👋 Olá! Eu sou seu Bot de Gastos.
-Use /help para ver os comandos disponíveis."
+        "👋 Olá! Eu sou seu Bot de Gastos.\n"
+        "Use /help para ver os comandos disponíveis."
     )
 
 def help_command(update, context):
     update.message.reply_text(
         "📖 <b>Comandos disponíveis:</b>\n"
-        "/start - Inicia o bot👋\n"
-        "/add - Adicionar um gasto💰\n"
-        "/close_month - Relatório mensal📊\n"
-        "/clear_all - Limpar todos os gastos🗑️\n"
-        "/cleanup_old <dias> - Apagar gastos antigos🕒\n"
-        "/help - Este menu de ajudaℹ️",
+        "/start - Inicia o bot 👋\n"
+        "/add - Adicionar um gasto 💰\n"
+        "/close_month - Relatório mensal 📊\n"
+        "/clear_all - Limpar todos os gastos 🗑️\n"
+        "/cleanup_old <dias> - Apagar gastos antigos 🕒\n"
+        "/help - Este menu de ajuda ℹ️",
         parse_mode='HTML'
     )
 
@@ -66,18 +66,17 @@ def add(update, context):
     update.message.reply_text(
         "🛠️ Como deseja adicionar o gasto?\n"
         "1️⃣ Passo a passo\n"
-        "2️⃣ Lista única (valor, categoria, pessoa, data)\n",
-        reply_markup=ReplyKeyboardRemove()
+        "2️⃣ Lista única (valor, categoria, pessoa, data)"
     )
     return MODE
 
 
 def process_mode(update, context):
     choice = update.message.text.strip()
-    if choice == '1' or choice.startswith('1'):
+    if choice.startswith('1'):
         update.message.reply_text("💰 Digite o valor gasto (ex: 50.00):")
         return AMOUNT
-    elif choice == '2' or choice.startswith('2'):
+    elif choice.startswith('2'):
         update.message.reply_text(
             "✍️ Digite todos os dados separados por vírgula:\n"
             "Ex: 50.00, Alimentação, João, 20/05/24"
@@ -194,16 +193,17 @@ def close_month(update, context):
         update.message.reply_photo(open(chart_path,'rb'))
         os.remove(chart_path)
 
+        # Mensagem de fechamento com valor total e dividido justo
         text = [
             f"📊 <b>Relatório Mensal</b>",
             f"Total Gasto: R${total:.2f}",
-            f"Por Pessoa: R${per:.2f}",
+            f"Valor Dividido Justo: R${per:.2f} por pessoa",
             "",
-            "💵 <b>Saldos</b>:"
+            "💵 <b>Saldos</b> (o que cada um deve ou receber):"
         ]
         for p, v in balances.items():
             status = 'deve pagar' if v>0 else 'deve receber'
-            text.append(f"{p}: R${v:.2f} ({status})")
+            text.append(f"{p}: R${abs(v):.2f} ({status})")
 
         update.message.reply_text("\n".join(text), parse_mode='HTML')
     except Exception as e:
