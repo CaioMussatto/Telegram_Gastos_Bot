@@ -172,7 +172,10 @@ def error_handler(update, context):
 # --- Main ---
 def main():
     token, service = load_config()
-    persistence = PicklePersistence('conv_data')
+    persistence = PicklePersistence(
+        filename='conv_data',
+        store_bot_data=False  # desativa bot_data :contentReference[oaicite:5]{index=5}
+    )
     updater = Updater(token, persistence=persistence, use_context=True)
     dp = updater.dispatcher
     dp.bot_data['conn'] = init_db()
