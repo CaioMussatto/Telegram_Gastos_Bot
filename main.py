@@ -9,116 +9,52 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     Filters,
-    ConversationHandler
+    ConversationHandler,
+    PicklePersistence
 )
 from dotenv import load_dotenv
 
-# Configurações iniciais
+# Carrega config do .env
+def load_config():
+    load_dotenv()
+    token = os.getenv("TELEGRAM_TOKEN")
+    if not token:
+        raise RuntimeError("❌ TELEGRAM_TOKEN não encontrado no .env")
+    service = os.getenv("RENDER_SERVICE_NAME", "telegram-gastos-bot")
+    return token, service
 
-load_dotenv()
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-SERVICE_NAME = "telegram-gastos-bot-l4cb"
-
-AMOUNT, CATEGORY, PERSON, DATE = range(4)
-
-
-# Banco de Dados
-def init_db():
-    conn = sqlite3.connect('expenses.db')
+# Inicializa banco SQLite
+def init_db(db_path='expenses.db'):
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS expenses
-                (id INTEGER PRIMARY KEY,
-                 amount REAL,
-                 category TEXT,
-                 person TEXT,
-                 date DATE)''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS expenses (
+            id       INTEGER PRIMARY KEY,
+            amount   REAL,
+            category TEXT,
+            person   TEXT,
+            date     TEXT
+        )
+    ''')
     conn.commit()
     return conn
 
+# Estados da conversa
+AMOUNT, CATEGORY, PERSON, DATE = range(4)
 
-conn = init_db()
-
-
-def close_month(update, context):
-    try:
-        # Buscar dados do banco
-        df = pd.read_sql("SELECT * FROM expenses", conn)
-
-        if df.empty:
-            update.message.reply_text("📭 Nenhum gasto registrado este mês!")
-            return
-
-        # Cálculos
-        total = df['amount'].sum()
-        per_person = total / 2
-        saldos = df.groupby('person')['amount'].sum() - per_person
-
-        # Gráfico
-        plt.figure(figsize=(10, 6))
-        df.groupby(['category', 'person'])['amount'].sum().unstack().plot(kind='bar')
-        plt.title('Gastos por Categoria')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.savefig('chart.png')
-
-        # Relatório
-        report = (
-                f"📊 Relatório Mensal\n"
-                f"Total Gasto: R${total:.2f}\n"
-                f"Valor por Pessoa: R${per_person:.2f}\n\n"
-                "💵 Saldos:\n" +
-                "\n".join([f"{p}: R${v:.2f} ({'deve pagar' if v > 0 else 'deve receber'})"
-                           for p, v in saldos.items()])
-        )
-
-        # Enviar
-        update.message.reply_photo(photo=open('chart.png', 'rb'))
-        update.message.reply_text(report)
-
-    except Exception as e:
-        update.message.reply_text(f"⚠️ Erro ao gerar relatório: {str(e)}")
-
-# ========== NOVAS FUNÇÕES DE RETRY ==========
-def error_handler(update, context):
-    """Lida com erros inesperados"""
-    update.message.reply_text(
-        "⚠️ Ops! Algo deu errado. Vamos começar de novo.\n"
-        "Use /add para tentar novamente."
-    )
-    return ConversationHandler.END
-
-
-def cancel(update, context):
-    """Cancela a operação atual"""
-    update.message.reply_text(
-        "❌ Operação cancelada. Você pode começar de novo com /add",
-        reply_markup=ReplyKeyboardRemove()
-    )
-    return ConversationHandler.END
-
-
-# ========== HANDLERS ATUALIZADOS ==========
 def start(update, context):
     update.message.reply_text(
         "👋 Bem-vindo ao Bot de Gastos!\n"
-        "📌 Comandos disponíveis:\n"
-        "/add - Adicionar novo gasto\n"
-        "/close_month - Fechar relatório mensal\n"
-        "/help - Ajuda\n\n"
-        "❓ Dica: Use /cancel a qualquer momento para recomeçar!"
+        "Use /add para adicionar um gasto ou /close_month para relatório."
     )
 
-
 def add(update, context):
-    """Inicia o fluxo de adição com limpeza de estado anterior"""
     context.user_data.clear()
     update.message.reply_text(
-        "💰 Digite o valor gasto (ex: 50.00):\n"
-        "❌ Use /cancel para desistir",
+        "💰 Digite o valor gasto (ex: 50.00):",
         reply_markup=ReplyKeyboardRemove()
     )
     return AMOUNT
-
 
 def process_amount(update, context):
     try:
@@ -126,133 +62,147 @@ def process_amount(update, context):
         if amount <= 0:
             raise ValueError
         context.user_data['amount'] = amount
-        update.message.reply_text(
-            "📂 Categoria do gasto (ex: Alimentação, Transporte):\n"
-            "❌ Use /cancel para recomeçar"
-        )
+        update.message.reply_text("📂 Informe a categoria (máx. 30 caracteres):")
         return CATEGORY
-    except:
-        update.message.reply_text(
-            "🔢 Valor inválido! Digite apenas números positivos.\n"
-            "Exemplo: 75.50\n"
-            "Tente novamente:"
-        )
-        return AMOUNT  # Mantém no mesmo estado
-
+    except ValueError:
+        update.message.reply_text("🔢 Valor inválido! Digite um número positivo.")
+        return AMOUNT
 
 def process_category(update, context):
-    if len(update.message.text) > 30:
-        update.message.reply_text(
-            "📛 Categoria muito longa! Máximo 30 caracteres.\n"
-            "Digite novamente:"
-        )
+    cat = update.message.text.strip()
+    if len(cat) > 30:
+        update.message.reply_text("📛 Categoria muito longa! Máximo 30 caracteres.")
         return CATEGORY
-
-    context.user_data['category'] = update.message.text
-    update.message.reply_text(
-        "👤 Quem realizou o gasto? (ex: João, Maria):\n"
-        "❌ Use /cancel para recomeçar"
-    )
+    context.user_data['category'] = cat
+    update.message.reply_text("👤 Quem realizou o gasto? (máx. 20 caracteres):")
     return PERSON
 
-
 def process_person(update, context):
-    if len(update.message.text) > 20:
-        update.message.reply_text(
-            "📛 Nome muito longo! Máximo 20 caracteres.\n"
-            "Digite novamente:"
-        )
+    person = update.message.text.strip()
+    if len(person) > 20:
+        update.message.reply_text("📛 Nome muito longo! Máximo 20 caracteres.")
         return PERSON
-
-    context.user_data['person'] = update.message.text
-    update.message.reply_text(
-        "📅 Data do gasto no formato AAAA-MM-DD (ex: 2024-05-20):\n"
-        "❌ Use /cancel para recomeçar"
-    )
+    context.user_data['person'] = person
+    update.message.reply_text("📅 Data no formato DD/MM/AA (ex: 20/05/24):")
     return DATE
 
-
 def process_date(update, context):
+    date_str = update.message.text.strip()
     try:
-        date_str = update.message.text
-        datetime.strptime(date_str, "%d-%m-%y")  # Validação
-
-        # Persistência
+        # Valida DD/MM/AA
+        date_obj = datetime.strptime(date_str, "%d/%m/%y")  # aceita DD/MM/AA :contentReference[oaicite:2]{index=2}
+        conn = context.bot_data['conn']
         c = conn.cursor()
-        c.execute("INSERT INTO expenses VALUES (NULL,?,?,?,?)",
-                  (context.user_data['amount'],
-                   context.user_data['category'],
-                   context.user_data['person'],
-                   date_str))
-        conn.commit()
-
-        update.message.reply_text(
-            "✅ Gasto registrado com sucesso!\n"
-            "Você pode:\n"
-            "- Adicionar outro com /add\n"
-            "- Fechar o mês com /close_month"
+        c.execute(
+            "INSERT INTO expenses (amount, category, person, date) VALUES (?, ?, ?, ?)",
+            (
+                context.user_data['amount'],
+                context.user_data['category'],
+                context.user_data['person'],
+                date_str  # mantém DD/MM/AA no DB
+            )
         )
+        conn.commit()
+        update.message.reply_text("✅ Gasto registrado com sucesso!")
         return ConversationHandler.END
-
     except ValueError:
         update.message.reply_text(
-            "📅 Formato de data inválido!\n"
-            "Use exatamente DD-MM-YY (ex: 20-05-20)\n"
-            "Tente novamente:"
+            "📅 Formato inválido! Use DD/MM/AA (ex: 20/05/24). Tente novamente:"
         )
-        return DATE  # Permanece no estado DATE para nova tentativa
+        return DATE
 
+def close_month(update, context):
+    try:
+        df = pd.read_sql("SELECT * FROM expenses", context.bot_data['conn'])
+        if df.empty:
+            update.message.reply_text("📭 Nenhum gasto registrado este mês!")
+            return
+        # Converte para datetime caso venha em ISO
+        df['date_obj'] = pd.to_datetime(df['date'], format="%d/%m/%y", errors='coerce')
+        # Reexibe no formato DD/MM/AA
+        df['date_fmt'] = df['date_obj'].dt.strftime("%d/%m/%y")  # mantém DD/MM/AA :contentReference[oaicite:3]{index=3}
 
-# Resto do código (close_month e main) mantido igual ao anterior
-# ... [Manter as funções close_month e main do código anterior]
+        total = df['amount'].sum()
+        per_person = total / df['person'].nunique()
+        balances = df.groupby('person')['amount'].sum() - per_person
+
+        # Gera gráfico
+        plt.figure(figsize=(10, 6))
+        df.groupby(['category', 'person'])['amount'].sum().unstack().plot(kind='bar')
+        plt.title('Gastos por Categoria')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        chart_path = 'chart.png'
+        plt.savefig(chart_path)
+        plt.close()
+
+        # Monta relatório
+        lines = [
+            f"📊 Relatório Mensal",
+            f"Total Gasto: R${total:.2f}",
+            f"Valor por Pessoa: R${per_person:.2f}",
+            "",
+            "💵 Saldos:"
+        ]
+        for p, v in balances.items():
+            status = 'deve pagar' if v > 0 else 'deve receber'
+            lines.append(f"{p}: R${v:.2f} ({status})")
+
+        update.message.reply_photo(photo=open(chart_path, 'rb'))
+        update.message.reply_text("\n".join(lines))
+    except Exception as e:
+        update.message.reply_text(f"⚠️ Erro ao gerar relatório: {e}")
+
+def cancel(update, context):
+    update.message.reply_text(
+        "❌ Operação cancelada.",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
+
+def error_handler(update, context):
+    update.message.reply_text(
+        "⚠️ Ops! Algo deu errado. Use /add para tentar novamente."
+    )
+    return ConversationHandler.END
 
 def main():
-    updater = Updater(TOKEN)
+    token, service = load_config()
+    persistence = PicklePersistence(filename='conversationbot_data')
+    updater = Updater(token, persistence=persistence, use_context=True)
     dp = updater.dispatcher
 
-    # Conversation Handler melhorado
-    conv_handler = ConversationHandler(
+    # Conexão SQLite em bot_data
+    dp.bot_data['conn'] = init_db()
+
+    # ConversationHandler
+    conv = ConversationHandler(
         entry_points=[CommandHandler('add', add)],
         states={
-            AMOUNT: [
-                MessageHandler(Filters.text, process_amount),
-                CommandHandler('cancel', cancel)
-            ],
-            CATEGORY: [
-                MessageHandler(Filters.text, process_category),
-                CommandHandler('cancel', cancel)
-            ],
-            PERSON: [
-                MessageHandler(Filters.text, process_person),
-                CommandHandler('cancel', cancel)
-            ],
-            DATE: [
-                MessageHandler(Filters.text, process_date),
-                CommandHandler('cancel', cancel)
-            ]
+            AMOUNT: [MessageHandler(Filters.text & ~Filters.command, process_amount), CommandHandler('cancel', cancel)],
+            CATEGORY: [MessageHandler(Filters.text & ~Filters.command, process_category), CommandHandler('cancel', cancel)],
+            PERSON: [MessageHandler(Filters.text & ~Filters.command, process_person), CommandHandler('cancel', cancel)],
+            DATE: [MessageHandler(Filters.text & ~Filters.command, process_date), CommandHandler('cancel', cancel)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
-        allow_reentry=True,  # Permite reiniciar o /add múltiplas vezes
-        persistent=True,  # Mantém os dados entre reinícios do bot
-        name="conversation"  # Necessário para persistent=True
+        name="expenses_conversation",
+        persistent=True
     )
 
-    # Registrar handlers
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("close_month", close_month))
-    dp.add_handler(conv_handler)
-    #dp.add_error_handler(error_handler)
+    # Registra handlers
+    dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(CommandHandler('close_month', close_month))
+    dp.add_handler(conv)
+    dp.add_error_handler(error_handler)
 
-    # Configurar webhook
+    # Webhook no Render
     updater.start_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get('PORT', 10000)),
-        url_path=TOKEN,
-        webhook_url=f"https://{SERVICE_NAME}.onrender.com/{TOKEN}"
+        listen='0.0.0.0',
+        port=int(os.environ.get('PORT', '10000')),
+        url_path=token,
+        webhook_url=f"https://{service}.onrender.com/{token}"
     )
-
     updater.idle()
-
 
 if __name__ == '__main__':
     main()
