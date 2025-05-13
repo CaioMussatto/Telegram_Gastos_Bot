@@ -43,27 +43,32 @@ MODE, AMOUNT, CATEGORY, PERSON, DATE, LIST = range(6)
 
 # --- Handlers de comandos ---
 def start(update, context):
-    update.message.reply_text(
-        "👋 Olá! Eu sou seu Bot de Gastos.\n"
-        "Use /help para ver os comandos disponíveis."
-    )
-
-def help_command(update, context):
-    update.message.reply_text(
-        "📖 <b>Comandos disponíveis:</b>\n"
-        "/start - Inicia o bot 👋\n"
+    update.effective_message.reply_text(
+        "👋 Olá! Eu sou seu Bot de Gastos. Aqui estão os comandos disponíveis:\n"
+        "/start - Reinicia o bot e mostra este menu\n"
         "/add - Adicionar um gasto 💰\n"
         "/close_month - Relatório mensal 📊\n"
         "/clear_all - Limpar todos os gastos 🗑️\n"
-        "/cleanup_old <dias> - Apagar gastos antigos 🕒\n"
-        "/help - Este menu de ajuda ℹ️",
+        "/cleanup_old <dias> - Apagar gastos mais antigos que X dias 🕒\n"
+        "/help - Mostrar esta ajuda ℹ️"
+    )
+
+def help_command(update, context):
+    update.effective_message.reply_text(
+        "📖 <b>Comandos disponíveis:</b>\n"
+        "/start - Reinicia o bot e mostra o menu👋\n"
+        "/add - Adicionar um gasto💰\n"
+        "/close_month - Relatório mensal📊\n"
+        "/clear_all - Limpar todos os gastos🗑️\n"
+        "/cleanup_old <dias> - Apagar registros antigos🕒\n"
+        "/help - Este menu de ajudaℹ️",
         parse_mode='HTML'
     )
 
 # --- Fluxo de adição de gastos ---
 def add(update, context):
     context.user_data.clear()
-    update.message.reply_text(
+    update.effective_message.reply_text(
         "🛠️ Como deseja adicionar o gasto?\n"
         "1️⃣ Passo a passo\n"
         "2️⃣ Lista única (valor, categoria, pessoa, data)"
@@ -72,56 +77,56 @@ def add(update, context):
 
 
 def process_mode(update, context):
-    choice = update.message.text.strip()
+    choice = update.effective_message.text.strip()
     if choice.startswith('1'):
-        update.message.reply_text("💰 Digite o valor gasto (ex: 50.00):")
+        update.effective_message.reply_text("💰 Digite o valor gasto (ex: 50.00):")
         return AMOUNT
     elif choice.startswith('2'):
-        update.message.reply_text(
+        update.effective_message.reply_text(
             "✍️ Digite todos os dados separados por vírgula:\n"
             "Ex: 50.00, Alimentação, João, 20/05/24"
         )
         return LIST
     else:
-        update.message.reply_text("❌ Opção inválida! Digite 1 ou 2:")
+        update.effective_message.reply_text("❌ Opção inválida! Digite 1 ou 2:")
         return MODE
 
 
 def process_amount(update, context):
     try:
-        amt = float(update.message.text)
+        amt = float(update.effective_message.text)
         if amt <= 0:
             raise ValueError
         context.user_data['amount'] = amt
-        update.message.reply_text("📂 Categoria (máx. 30 chars):")
+        update.effective_message.reply_text("📂 Categoria (máx. 30 chars):")
         return CATEGORY
     except ValueError:
-        update.message.reply_text("🔢 Digite um número positivo válido.")
+        update.effective_message.reply_text("🔢 Digite um número positivo válido.")
         return AMOUNT
 
 
 def process_category(update, context):
-    cat = update.message.text.strip()
+    cat = update.effective_message.text.strip()
     if len(cat) > 30:
-        update.message.reply_text("📛 Categoria muito longa! Máx. 30 caracteres.")
+        update.effective_message.reply_text("📛 Categoria muito longa! Máx. 30 caracteres.")
         return CATEGORY
     context.user_data['category'] = cat
-    update.message.reply_text("👤 Quem realizou o gasto? (máx. 20 chars):")
+    update.effective_message.reply_text("👤 Quem realizou o gasto? (máx. 20 chars):")
     return PERSON
 
 
 def process_person(update, context):
-    per = update.message.text.strip()
+    per = update.effective_message.text.strip()
     if len(per) > 20:
-        update.message.reply_text("📛 Nome muito longo! Máx. 20 caracteres.")
+        update.effective_message.reply_text("📛 Nome muito longo! Máx. 20 caracteres.")
         return PERSON
     context.user_data['person'] = per
-    update.message.reply_text("📅 Data DD/MM/AA (ex: 20/05/24):")
+    update.effective_message.reply_text("📅 Data DD/MM/AA (ex: 20/05/24):")
     return DATE
 
 
 def process_date(update, context):
-    date_str = update.message.text.strip()
+    date_str = update.effective_message.text.strip()
     try:
         datetime.strptime(date_str, "%d/%m/%y")
         conn = context.bot_data['conn']
@@ -135,16 +140,16 @@ def process_date(update, context):
             )
         )
         conn.commit()
-        update.message.reply_text("✅ Gasto registrado com sucesso!")
+        update.effective_message.reply_text("✅ Gasto registrado com sucesso!")
         return ConversationHandler.END
     except ValueError:
-        update.message.reply_text("📅 Formato inválido! Use DD/MM/AA (ex: 20/05/24).")
+        update.effective_message.reply_text("📅 Formato inválido! Use DD/MM/AA (ex: 20/05/24).")
         return DATE
 
 
 def process_list(update, context):
     try:
-        parts = [p.strip() for p in update.message.text.split(',')]
+        parts = [p.strip() for p in update.effective_message.text.split(',')]
         amount, category, person, date_str = parts
         amt = float(amount)
         if amt <= 0:
@@ -156,10 +161,10 @@ def process_list(update, context):
             (amt, category, person, date_str)
         )
         conn.commit()
-        update.message.reply_text("✅ Gasto registrado via lista com sucesso!")
+        update.effective_message.reply_text("✅ Gasto registrado via lista com sucesso!")
         return ConversationHandler.END
     except Exception:
-        update.message.reply_text(
+        update.effective_message.reply_text(
             "❌ Entrada inválida! Use: valor, categoria, pessoa, data (DD/MM/AA)"
         )
         return LIST
@@ -170,7 +175,8 @@ def close_month(update, context):
         conn = context.bot_data['conn']
         df = pd.read_sql("SELECT * FROM expenses", conn)
         if df.empty:
-            return update.message.reply_text("📭 Nenhum gasto registrado este mês!")
+            update.effective_message.reply_text("📭 Nenhum gasto registrado este mês!")
+            return
         df['date_obj'] = pd.to_datetime(df['date'], format="%d/%m/%y")
         total = df['amount'].sum()
         per = total / df['person'].nunique()
@@ -190,7 +196,7 @@ def close_month(update, context):
         plt.savefig(chart_path)
         plt.close()
 
-        update.message.reply_photo(open(chart_path,'rb'))
+        update.effective_message.reply_photo(open(chart_path,'rb'))
         os.remove(chart_path)
 
         # Mensagem de fechamento com valor total e dividido justo
@@ -205,9 +211,9 @@ def close_month(update, context):
             status = 'deve pagar' if v>0 else 'deve receber'
             text.append(f"{p}: R${abs(v):.2f} ({status})")
 
-        update.message.reply_text("\n".join(text), parse_mode='HTML')
+        update.effective_message.reply_text("\n".join(text), parse_mode='HTML')
     except Exception as e:
-        update.message.reply_text(f"⚠️ Erro no relatório: {e}")
+        update.effective_message.reply_text(f"⚠️ Erro no relatório: {e}")
 
 
 def clear_all(update, context):
@@ -215,7 +221,7 @@ def clear_all(update, context):
     conn.execute("DELETE FROM expenses")
     conn.commit()
     conn.execute("VACUUM")
-    update.message.reply_text("🗑️ Todos os gastos foram removidos.")
+    update.effective_message.reply_text("🗑️ Todos os gastos foram removidos.")
 
 
 def cleanup_old(update, context):
@@ -226,18 +232,20 @@ def cleanup_old(update, context):
         conn.execute("DELETE FROM expenses WHERE date < ?", (cutoff,))
         conn.commit()
         conn.execute("VACUUM")
-        update.message.reply_text(f"🗑️ Registros anteriores a {cutoff} removidos.")
+        update.effective_message.reply_text(f"🗑️ Registros anteriores a {cutoff} removidos.")
     except Exception:
-        update.message.reply_text("Use: /cleanup_old <dias> (ex: /cleanup_old 90)")
+        update.effective_message.reply_text("Use: /cleanup_old <dias> (ex: /cleanup_old 90)")
 
 # --- Cancelamento e erro ---
 def cancel(update, context):
-    update.message.reply_text("❌ Operação cancelada.", reply_markup=ReplyKeyboardRemove())
+    update.effective_message.reply_text("❌ Operação cancelada.", reply_markup=ReplyKeyboardRemove())
     return ConversationHandler.END
 
 
 def error_handler(update, context):
-    update.message.reply_text("⚠️ Algo deu errado. Use /add para reiniciar.")
+    # Usa effective_message para evitar NoneType
+    if update.effective_message:
+        update.effective_message.reply_text("⚠️ Algo deu errado. Use /add para reiniciar.")
 
 # --- Função principal ---
 def main():
